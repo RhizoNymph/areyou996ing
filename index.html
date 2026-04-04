@@ -171,15 +171,21 @@
           <div class="label">Peak hour</div>
         </div>
         <div class="stat-card">
+          <div class="value" id="stat-peak-dow">-</div>
+          <div class="label">Peak day</div>
+        </div>
+        <div class="stat-card">
           <div class="value" id="stat-repos">0</div>
           <div class="label">Repos</div>
         </div>
       </div>
-      <div class="card">
-        <canvas id="chart"></canvas>
-      </div>
-      <div class="card">
-        <canvas id="dow-chart"></canvas>
+      <div style="display:flex;gap:1rem;align-items:stretch;">
+        <div class="card" style="flex:3;">
+          <canvas id="chart"></canvas>
+        </div>
+        <div class="card" style="flex:1;">
+          <canvas id="dow-chart"></canvas>
+        </div>
       </div>
       <div class="card">
         <div class="slider-label">
@@ -499,8 +505,7 @@
         },
         options: {
           responsive: true,
-          maintainAspectRatio: true,
-          aspectRatio: 2.5,
+          maintainAspectRatio: false,
           plugins: {
             legend: { display: false },
             tooltip: {
@@ -566,6 +571,8 @@
       document.getElementById('stat-total').textContent = filtered.length.toLocaleString();
       const peak = buckets.indexOf(Math.max(...buckets));
       document.getElementById('stat-peak').textContent = buckets[peak] > 0 ? HOUR_LABELS[peak] : '-';
+      const peakDow = dowBuckets.indexOf(Math.max(...dowBuckets));
+      document.getElementById('stat-peak-dow').textContent = dowBuckets[peakDow] > 0 ? DOW_LABELS[peakDow] : '-';
       document.getElementById('stat-repos').textContent = new Set(filtered.map(c => c.repo)).size;
     }
   </script>
