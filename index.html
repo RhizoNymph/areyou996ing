@@ -214,10 +214,6 @@
         </div>
       </div>
       <div class="card">
-        <div class="slider-label">
-          <span id="label-start"></span>
-          <span id="label-end"></span>
-        </div>
         <div id="range-slider"></div>
       </div>
       <div id="repo-filters" class="repo-filters hidden">
@@ -522,6 +518,7 @@
           aspectRatio: 2.5,
           plugins: {
             legend: { display: false },
+            title: { display: true, text: 'Commits by Hour', color: '#e6edf3', font: { size: 13, weight: '600' }, padding: { bottom: 12 } },
             tooltip: {
               backgroundColor: '#30363d', titleColor: '#e6edf3', bodyColor: '#c9d1d9',
               borderColor: '#484f58', borderWidth: 1,
@@ -529,8 +526,8 @@
             },
           },
           scales: {
-            x: { grid: { color: '#21262d' }, ticks: { color: '#8b949e', font: { size: 11 } } },
-            y: { beginAtZero: true, grid: { color: '#21262d' }, ticks: { color: '#8b949e', precision: 0 } },
+            x: { grid: { color: '#21262d' }, ticks: { color: '#8b949e', font: { size: 11 } }, title: { display: true, text: 'Hour of Day', color: '#8b949e', font: { size: 11 } } },
+            y: { beginAtZero: true, grid: { color: '#21262d' }, ticks: { color: '#8b949e', precision: 0 }, title: { display: true, text: 'Commits', color: '#8b949e', font: { size: 11 } } },
           },
         },
       });
@@ -558,6 +555,7 @@
           maintainAspectRatio: false,
           plugins: {
             legend: { display: false },
+            title: { display: true, text: 'Commits by Day of Week', color: '#e6edf3', font: { size: 13, weight: '600' }, padding: { bottom: 12 } },
             tooltip: {
               backgroundColor: '#30363d', titleColor: '#e6edf3', bodyColor: '#c9d1d9',
               borderColor: '#484f58', borderWidth: 1,
@@ -565,15 +563,15 @@
             },
           },
           scales: {
-            x: { grid: { color: '#21262d' }, ticks: { color: '#8b949e', font: { size: 11 } } },
-            y: { beginAtZero: true, grid: { color: '#21262d' }, ticks: { color: '#8b949e', precision: 0 } },
+            x: { grid: { color: '#21262d' }, ticks: { color: '#8b949e', font: { size: 11 } }, title: { display: true, text: 'Day', color: '#8b949e', font: { size: 11 } } },
+            y: { beginAtZero: true, grid: { color: '#21262d' }, ticks: { color: '#8b949e', precision: 0 }, title: { display: true, text: 'Commits', color: '#8b949e', font: { size: 11 } } },
           },
         },
       });
     }
 
     // ---- Time-series charts ----
-    function makeTimeSeriesChart(id, color, yLabel) {
+    function makeTimeSeriesChart(id, color, title, xLabel, yLabel) {
       const ctx = document.getElementById(id).getContext('2d');
       return new Chart(ctx, {
         type: 'bar',
@@ -584,6 +582,7 @@
           aspectRatio: 1.8,
           plugins: {
             legend: { display: false },
+            title: { display: true, text: title, color: '#e6edf3', font: { size: 13, weight: '600' }, padding: { bottom: 12 } },
             tooltip: {
               backgroundColor: '#30363d', titleColor: '#e6edf3', bodyColor: '#c9d1d9',
               borderColor: '#484f58', borderWidth: 1,
@@ -591,19 +590,19 @@
             },
           },
           scales: {
-            x: { grid: { color: '#21262d' }, ticks: { color: '#8b949e', font: { size: 10 }, maxRotation: 45, maxTicksLimit: 16 } },
-            y: { beginAtZero: true, grid: { color: '#21262d' }, ticks: { color: '#8b949e', precision: 0 } },
+            x: { grid: { color: '#21262d' }, ticks: { color: '#8b949e', font: { size: 10 }, maxRotation: 45, maxTicksLimit: 16 }, title: { display: true, text: xLabel, color: '#8b949e', font: { size: 11 } } },
+            y: { beginAtZero: true, grid: { color: '#21262d' }, ticks: { color: '#8b949e', precision: 0 }, title: { display: true, text: yLabel, color: '#8b949e', font: { size: 11 } } },
           },
         },
       });
     }
 
     function initHoursPerDayChart() {
-      hoursPerDayChart = makeTimeSeriesChart('hours-per-day-chart', '#58a6ff', 'Hours');
+      hoursPerDayChart = makeTimeSeriesChart('hours-per-day-chart', '#58a6ff', 'Active Hours per Day', 'Date', 'Hours');
     }
 
     function initDaysPerWeekChart() {
-      daysPerWeekChart = makeTimeSeriesChart('days-per-week-chart', '#bc8cff', 'Days');
+      daysPerWeekChart = makeTimeSeriesChart('days-per-week-chart', '#bc8cff', 'Active Days per Week', 'Week', 'Days');
     }
 
     function fmtShortDate(d) {
