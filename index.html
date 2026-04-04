@@ -67,6 +67,10 @@
     }
     .form-group input:focus { border-color: #58a6ff; }
     .form-group .hint { font-size: 0.7rem; color: #484f58; margin-top: 0.25rem; }
+    .checkbox-group { display: flex; align-items: flex-start; gap: 0.6rem; margin-bottom: 1rem; }
+    .checkbox-group input[type=checkbox] { margin-top: 2px; accent-color: #58a6ff; flex-shrink: 0; }
+    .checkbox-group .check-label { font-size: 0.8rem; color: #8b949e; }
+    .checkbox-group .check-label strong { color: #c9d1d9; }
     .btn {
       display: inline-flex; align-items: center; gap: 0.5rem;
       padding: 0.6rem 1.25rem; background: #238636; border: 1px solid #2ea043;
@@ -141,6 +145,12 @@
           <label for="token">Personal Access Token <span style="color:#484f58">(optional)</span></label>
           <input type="password" id="token" placeholder="ghp_...">
           <div class="hint">Needed for private repos. Public repos work without a token (60 req/hr limit).</div>
+        </div>
+        <div class="checkbox-group">
+          <input type="checkbox" id="all-branches">
+          <label for="all-branches" class="check-label">
+            <strong>Scan all branches</strong> — counts commits when made, not when merged. Slower and uses more API quota.
+          </label>
         </div>
         <button class="btn" id="fetch-btn" onclick="startFetch()">Fetch Commits</button>
         <div id="progress" class="hidden">
@@ -265,6 +275,7 @@
       const username = document.getElementById('username').value.trim();
       const token = document.getElementById('token').value.trim() || null;
       const orgs = document.getElementById('orgs').value.split(',').map(s => s.trim()).filter(Boolean);
+      const allBranches = document.getElementById('all-branches').checked;
       if (!username) { showError('Enter a GitHub username.'); return; }
 
       const btn = document.getElementById('fetch-btn');
@@ -310,24 +321,43 @@
 
         // Step 2: Fetch commits from each repo (with concurrency limit)
         const commits = [];
+        const seenShas = new Set();
         let completed = 0;
 
         const fetchRepoCommits = async (repo) => {
           try {
-            const repoCommits = await fetchAllPages(
-              `https://api.github.com/repos/${repo.full_name}/commits?author=${encodeURIComponent(username)}&per_page=100`,
-              token
-            );
-            for (const c of repoCommits) {
-              if (c.commit && c.commit.author) {
-                commits.push({
-                  timestamp: c.commit.author.date,
-                  repo: repo.full_name,
-                });
+            if (allBranches) {
+              const branches = await fetchAllPages(
+                `https://api.github.com/repos/${repo.full_name}/branches?per_page=100`,
+                token
+              );
+              for (const branch of branches) {
+                try {
+                  const branchCommits = await fetchAllPages(
+                    `https://api.github.com/repos/${repo.full_name}/commits?sha=${encodeURIComponent(branch.name)}&author=${encodeURIComponent(username)}&per_page=100`,
+                    token
+                  );
+                  for (const c of branchCommits) {
+                    if (!seenShas.has(c.sha) && c.commit && c.commit.author) {
+                      seenShas.add(c.sha);
+                      commits.push({ timestamp: c.commit.author.date, repo: repo.full_name });
+                    }
+                  }
+                } catch (_) { /* skip inaccessible branch */ }
+              }
+            } else {
+              const repoCommits = await fetchAllPages(
+                `https://api.github.com/repos/${repo.full_name}/commits?author=${encodeURIComponent(username)}&per_page=100`,
+                token
+              );
+              for (const c of repoCommits) {
+                if (c.commit && c.commit.author) {
+                  commits.push({ timestamp: c.commit.author.date, repo: repo.full_name });
+                }
               }
             }
           } catch (_) {
-            // Skip repos we can't access (forks with no commits, etc.)
+            // Skip repos we can't access
           }
           completed++;
           const pct = 5 + Math.round((completed / allRepos.length) * 95);
