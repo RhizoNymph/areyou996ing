@@ -120,7 +120,7 @@
   </style>
 </head>
 <body>
-  <h1>Commit Histograms</h1>
+  <h1>Are you 996ing?</h1>
   <p class="subtitle">When do you commit code?</p>
 
   <div class="container">
@@ -173,6 +173,14 @@
         <div class="stat-card">
           <div class="value" id="stat-peak-dow">-</div>
           <div class="label">Peak day</div>
+        </div>
+        <div class="stat-card">
+          <div class="value" id="stat-avg-hours">-</div>
+          <div class="label">Avg hours/day</div>
+        </div>
+        <div class="stat-card">
+          <div class="value" id="stat-avg-days">-</div>
+          <div class="label">Avg days/week</div>
         </div>
         <div class="stat-card">
           <div class="value" id="stat-repos">0</div>
@@ -573,6 +581,34 @@
       document.getElementById('stat-peak').textContent = buckets[peak] > 0 ? HOUR_LABELS[peak] : '-';
       const peakDow = dowBuckets.indexOf(Math.max(...dowBuckets));
       document.getElementById('stat-peak-dow').textContent = dowBuckets[peakDow] > 0 ? DOW_LABELS[peakDow] : '-';
+
+      // Avg distinct hours per day (across days with commits)
+      const dayHours = new Map(); // 'YYYY-MM-DD' -> Set of hours
+      // Avg distinct days per week (across weeks with commits)
+      const weekDays = new Map(); // 'YYYY-Www' -> Set of day-of-week
+      filtered.forEach(c => {
+        const dayKey = c.date.toISOString().slice(0, 10);
+        if (!dayHours.has(dayKey)) dayHours.set(dayKey, new Set());
+        dayHours.get(dayKey).add(c.hour);
+
+        const d = c.date;
+        const dow = d.getDay();
+        const mon = new Date(d);
+        mon.setDate(d.getDate() - (dow === 0 ? 6 : dow - 1));
+        const weekKey = mon.toISOString().slice(0, 10);
+        if (!weekDays.has(weekKey)) weekDays.set(weekKey, new Set());
+        weekDays.get(weekKey).add(dayKey);
+      });
+
+      const avgHours = dayHours.size > 0
+        ? ([...dayHours.values()].reduce((s, v) => s + v.size, 0) / dayHours.size).toFixed(1)
+        : '-';
+      const avgDays = weekDays.size > 0
+        ? ([...weekDays.values()].reduce((s, v) => s + v.size, 0) / weekDays.size).toFixed(1)
+        : '-';
+      document.getElementById('stat-avg-hours').textContent = avgHours;
+      document.getElementById('stat-avg-days').textContent = avgDays;
+
       document.getElementById('stat-repos').textContent = new Set(filtered.map(c => c.repo)).size;
     }
   </script>
