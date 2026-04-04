@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Commit Hour Histogram</title>
+  <title>Commit Histograms</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/nouislider@15/dist/nouislider.min.css">
   <script src="https://cdn.jsdelivr.net/npm/nouislider@15/dist/nouislider.min.js"></script>
@@ -171,6 +171,10 @@
           <div class="label">Peak hour</div>
         </div>
         <div class="stat-card">
+          <div class="value" id="stat-peak-dow">-</div>
+          <div class="label">Peak day</div>
+        </div>
+        <div class="stat-card">
           <div class="value" id="stat-avg-hours">-</div>
           <div class="label">Avg hours/day</div>
         </div>
@@ -183,8 +187,13 @@
           <div class="label">Repos</div>
         </div>
       </div>
-      <div class="card">
-        <canvas id="chart"></canvas>
+      <div style="display:flex;gap:1rem;align-items:stretch;">
+        <div class="card" style="flex:3;">
+          <canvas id="chart"></canvas>
+        </div>
+        <div class="card" style="flex:1;">
+          <canvas id="dow-chart"></canvas>
+        </div>
       </div>
       <div class="card">
         <div class="slider-label">
@@ -207,9 +216,12 @@
       return `${h}${suffix}`;
     });
 
+    const DOW_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
     const CONCURRENCY = 6;
     let allCommits = [];
     let chart = null;
+    let dowChart = null;
     let slider = null;
     let activeRepos = new Set();
 
@@ -379,11 +391,10 @@
     // ---- App init ----
     function initApp(commits) {
       allCommits = commits
-        .map(c => ({
-          date: new Date(c.timestamp),
-          hour: new Date(c.timestamp).getHours(),
-          repo: c.repo,
-        }))
+        .map(c => {
+          const date = new Date(c.timestamp);
+          return { date, hour: date.getHours(), dow: date.getDay(), repo: c.repo };
+        })
         .sort((a, b) => a.date - b.date);
 
       if (allCommits.length === 0) { alert('No commits found.'); return; }
@@ -395,6 +406,7 @@
       activeRepos = new Set(repos);
       buildRepoChips(repos);
       initChart();
+      initDowChart();
       initSlider();
       updateChart();
     }
@@ -482,6 +494,42 @@
       });
     }
 
+    // ---- Day-of-week chart ----
+    function initDowChart() {
+      const ctx = document.getElementById('dow-chart').getContext('2d');
+      dowChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: DOW_LABELS,
+          datasets: [{
+            label: 'Commits',
+            data: new Array(7).fill(0),
+            backgroundColor: DOW_LABELS.map((_, i) =>
+              i === 0 || i === 6 ? '#bc8cff' : '#58a6ff'
+            ),
+            borderRadius: 4,
+            borderSkipped: false,
+          }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: '#30363d', titleColor: '#e6edf3', bodyColor: '#c9d1d9',
+              borderColor: '#484f58', borderWidth: 1,
+              callbacks: { label: ctx => `${ctx.parsed.y} commits` },
+            },
+          },
+          scales: {
+            x: { grid: { color: '#21262d' }, ticks: { color: '#8b949e', font: { size: 11 } } },
+            y: { beginAtZero: true, grid: { color: '#21262d' }, ticks: { color: '#8b949e', precision: 0 } },
+          },
+        },
+      });
+    }
+
     // ---- Slider ----
     function initSlider() {
       const el = document.getElementById('range-slider');
@@ -519,14 +567,20 @@
 
       const filtered = allCommits.filter(c => c.date >= start && c.date <= end && activeRepos.has(c.repo));
       const buckets = new Array(24).fill(0);
-      filtered.forEach(c => buckets[c.hour]++);
+      const dowBuckets = new Array(7).fill(0);
+      filtered.forEach(c => { buckets[c.hour]++; dowBuckets[c.dow]++; });
 
       chart.data.datasets[0].data = buckets;
       chart.update();
 
+      dowChart.data.datasets[0].data = dowBuckets;
+      dowChart.update();
+
       document.getElementById('stat-total').textContent = filtered.length.toLocaleString();
       const peak = buckets.indexOf(Math.max(...buckets));
       document.getElementById('stat-peak').textContent = buckets[peak] > 0 ? HOUR_LABELS[peak] : '-';
+      const peakDow = dowBuckets.indexOf(Math.max(...dowBuckets));
+      document.getElementById('stat-peak-dow').textContent = dowBuckets[peakDow] > 0 ? DOW_LABELS[peakDow] : '-';
 
       // Avg distinct hours per day (across days with commits)
       const dayHours = new Map(); // 'YYYY-MM-DD' -> Set of hours
