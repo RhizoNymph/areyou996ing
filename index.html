@@ -195,6 +195,14 @@
           <canvas id="dow-chart"></canvas>
         </div>
       </div>
+      <div style="display:flex;gap:1rem;">
+        <div class="card" style="flex:1;">
+          <canvas id="hours-per-day-chart"></canvas>
+        </div>
+        <div class="card" style="flex:1;">
+          <canvas id="days-per-week-chart"></canvas>
+        </div>
+      </div>
       <div class="card">
         <div class="slider-label">
           <span id="label-start"></span>
@@ -222,6 +230,8 @@
     let allCommits = [];
     let chart = null;
     let dowChart = null;
+    let hoursPerDayChart = null;
+    let daysPerWeekChart = null;
     let slider = null;
     let activeRepos = new Set();
 
@@ -407,6 +417,8 @@
       buildRepoChips(repos);
       initChart();
       initDowChart();
+      initHoursPerDayChart();
+      initDaysPerWeekChart();
       initSlider();
       updateChart();
     }
@@ -530,6 +542,44 @@
       });
     }
 
+    // ---- Time-series charts ----
+    function makeTimeSeriesChart(id, color, yLabel) {
+      const ctx = document.getElementById(id).getContext('2d');
+      return new Chart(ctx, {
+        type: 'bar',
+        data: { labels: [], datasets: [{ label: yLabel, data: [], backgroundColor: color, borderRadius: 2, borderSkipped: false }] },
+        options: {
+          responsive: true,
+          maintainAspectRatio: true,
+          aspectRatio: 1.8,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: '#30363d', titleColor: '#e6edf3', bodyColor: '#c9d1d9',
+              borderColor: '#484f58', borderWidth: 1,
+              callbacks: { label: ctx => `${ctx.parsed.y} ${yLabel.toLowerCase()}` },
+            },
+          },
+          scales: {
+            x: { grid: { color: '#21262d' }, ticks: { color: '#8b949e', font: { size: 10 }, maxRotation: 45, maxTicksLimit: 16 } },
+            y: { beginAtZero: true, grid: { color: '#21262d' }, ticks: { color: '#8b949e', precision: 0 } },
+          },
+        },
+      });
+    }
+
+    function initHoursPerDayChart() {
+      hoursPerDayChart = makeTimeSeriesChart('hours-per-day-chart', '#58a6ff', 'Hours');
+    }
+
+    function initDaysPerWeekChart() {
+      daysPerWeekChart = makeTimeSeriesChart('days-per-week-chart', '#bc8cff', 'Days');
+    }
+
+    function fmtShortDate(d) {
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    }
+
     // ---- Slider ----
     function initSlider() {
       const el = document.getElementById('range-slider');
@@ -608,6 +658,18 @@
         : '-';
       document.getElementById('stat-avg-hours').textContent = avgHours;
       document.getElementById('stat-avg-days').textContent = avgDays;
+
+      // Hours-per-day time series (sorted by date)
+      const sortedDays = [...dayHours.keys()].sort();
+      hoursPerDayChart.data.labels = sortedDays.map(k => fmtShortDate(new Date(k)));
+      hoursPerDayChart.data.datasets[0].data = sortedDays.map(k => dayHours.get(k).size);
+      hoursPerDayChart.update();
+
+      // Days-per-week time series (sorted by week start)
+      const sortedWeeks = [...weekDays.keys()].sort();
+      daysPerWeekChart.data.labels = sortedWeeks.map(k => fmtShortDate(new Date(k)));
+      daysPerWeekChart.data.datasets[0].data = sortedWeeks.map(k => weekDays.get(k).size);
+      daysPerWeekChart.update();
 
       document.getElementById('stat-repos').textContent = new Set(filtered.map(c => c.repo)).size;
     }
