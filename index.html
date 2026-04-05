@@ -627,10 +627,6 @@
         ],
       });
 
-      slider.on('update', values => {
-        document.getElementById('label-start').textContent = fmtDate(new Date(+values[0]));
-        document.getElementById('label-end').textContent = fmtDate(new Date(+values[1]));
-      });
       slider.on('change', () => updateChart());
     }
 
