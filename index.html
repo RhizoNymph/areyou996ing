@@ -105,6 +105,12 @@
     }
     .repo-chip.active { background: #58a6ff22; border-color: #58a6ff; color: #58a6ff; }
     .repo-chip:hover { border-color: #58a6ff; }
+    #day-boundary-select {
+      font-size: 0.75rem; padding: 0.25rem 0.5rem; border-radius: 6px;
+      border: 1px solid #30363d; background: #21262d; color: #c9d1d9;
+      cursor: pointer; outline: none;
+    }
+    #day-boundary-select:focus { border-color: #58a6ff; }
 
     .hidden { display: none; }
     .error-msg { color: #f85149; font-size: 0.85rem; margin-top: 0.75rem; text-align: center; }
@@ -206,7 +212,7 @@
         </div>
       </div>
       <div style="display:flex;gap:1rem;">
-        <div class="card" style="flex:1;">
+        <div class="card" style="flex:3;">
           <canvas id="hours-per-day-chart"></canvas>
         </div>
         <div class="card" style="flex:1;">
@@ -214,7 +220,7 @@
         </div>
       </div>
       <div style="display:flex;gap:1rem;">
-        <div class="card" style="flex:1;">
+        <div class="card" style="flex:3;">
           <canvas id="days-per-week-chart"></canvas>
         </div>
         <div class="card" style="flex:1;">
@@ -223,6 +229,11 @@
       </div>
       <div class="card">
         <div id="range-slider"></div>
+      </div>
+      <div id="day-boundary-control" class="repo-filters">
+        <span class="label-text">Day starts at:</span>
+        <select id="day-boundary-select"></select>
+        <span id="day-boundary-hint" style="font-size:0.7rem;color:#484f58;margin-left:0.25rem;"></span>
       </div>
       <div id="repo-filters" class="repo-filters hidden">
         <span class="label-text">Repos:</span>
@@ -250,6 +261,7 @@
     let dowAvgChart = null;
     let slider = null;
     let activeRepos = new Set();
+    let dayBoundaryHour = 6; // auto-detected in initApp, manually overridable
 
     // ---- GitHub API fetching ----
     async function ghFetch(url, token) {
@@ -451,6 +463,7 @@
       const repos = [...new Set(allCommits.map(c => c.repo))].sort();
       activeRepos = new Set(repos);
       buildRepoChips(repos);
+      initDayBoundaryControl();
       initChart();
       initDowChart();
       initHoursPerDayChart();
@@ -483,6 +496,29 @@
         chip.dataset.repo = repo;
         container.appendChild(chip);
       });
+    }
+
+    // ---- Day boundary control ----
+    function initDayBoundaryControl() {
+      const select = document.getElementById('day-boundary-select');
+      const hint = document.getElementById('day-boundary-hint');
+      if (select.options.length === 0) {
+        for (let h = 0; h < 24; h++) {
+          const opt = document.createElement('option');
+          opt.value = String(h);
+          opt.textContent = HOUR_LABELS[h];
+          select.appendChild(opt);
+        }
+        select.addEventListener('change', (e) => {
+          dayBoundaryHour = parseInt(e.target.value, 10);
+          hint.textContent = '(manual)';
+          updateChart();
+        });
+      }
+      const { hour, detected } = detectDayBoundary(allCommits);
+      dayBoundaryHour = hour;
+      select.value = String(hour);
+      hint.textContent = detected ? '(detected)' : '(default — weak signal)';
     }
 
     function makeChip(label, onClick) {
@@ -669,6 +705,35 @@
       return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     }
 
+    // "Work day" runs [dayBoundaryHour]→[dayBoundaryHour] local time, so
+    // commits before the boundary count toward the previous calendar day.
+    function workDayKey(date) {
+      const d = new Date(date);
+      if (d.getHours() < dayBoundaryHour) d.setDate(d.getDate() - 1);
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${dd}`;
+    }
+
+    // Detect the quietest hour of the day from a commit-hour histogram.
+    // Smooths with a 3-hour circular rolling mean and requires a meaningful
+    // trough (quietest hour < 40% of peak) before trusting the signal.
+    // Needs >=50 commits — otherwise falls back to 6am default.
+    function detectDayBoundary(commits) {
+      if (commits.length < 50) return { hour: 6, detected: false };
+      const hist = new Array(24).fill(0);
+      commits.forEach(c => hist[c.hour]++);
+      const smoothed = new Array(24).fill(0);
+      for (let i = 0; i < 24; i++) {
+        smoothed[i] = (hist[(i + 23) % 24] + hist[i] + hist[(i + 1) % 24]) / 3;
+      }
+      const max = Math.max(...smoothed);
+      const min = Math.min(...smoothed);
+      if (max === 0 || min / max > 0.4) return { hour: 6, detected: false };
+      return { hour: smoothed.indexOf(min), detected: true };
+    }
+
     // ---- Slider ----
     function initSlider() {
       const el = document.getElementById('range-slider');
@@ -703,9 +768,18 @@
       const filtered = allCommits.filter(c => c.date >= start && c.date <= end && activeRepos.has(c.repo));
       const buckets = new Array(24).fill(0);
       const dowBuckets = new Array(7).fill(0);
-      filtered.forEach(c => { buckets[c.hour]++; dowBuckets[c.dow]++; });
+      filtered.forEach(c => {
+        buckets[c.hour]++;
+        // Work-day DOW: commits before the boundary count toward the prior day.
+        const workDow = c.hour < dayBoundaryHour ? (c.dow + 6) % 7 : c.dow;
+        dowBuckets[workDow]++;
+      });
 
-      chart.data.datasets[0].data = buckets;
+      // Rotate hourly chart so the day boundary is leftmost on the x-axis.
+      const rotLabels = Array.from({ length: 24 }, (_, i) => HOUR_LABELS[(i + dayBoundaryHour) % 24]);
+      const rotData = Array.from({ length: 24 }, (_, i) => buckets[(i + dayBoundaryHour) % 24]);
+      chart.data.labels = rotLabels;
+      chart.data.datasets[0].data = rotData;
       chart.update();
 
       dowChart.data.datasets[0].data = dowBuckets;
@@ -723,7 +797,7 @@
       // Avg distinct days per week (across weeks with commits)
       const weekDays = new Map(); // 'YYYY-Www' -> Set of day-of-week
       filtered.forEach(c => {
-        const dayKey = c.date.toISOString().slice(0, 10);
+        const dayKey = workDayKey(c.date);
         if (!dayHours.has(dayKey)) dayHours.set(dayKey, new Set());
         dayHours.get(dayKey).add(c.hour);
 
@@ -732,11 +806,11 @@
         if (c.date < span.min) span.min = c.date;
         if (c.date > span.max) span.max = c.date;
 
-        const d = c.date;
+        const d = new Date(dayKey + 'T12:00:00');
         const dow = d.getDay();
         const mon = new Date(d);
         mon.setDate(d.getDate() - (dow === 0 ? 6 : dow - 1));
-        const weekKey = mon.toISOString().slice(0, 10);
+        const weekKey = workDayKey(mon);
         if (!weekDays.has(weekKey)) weekDays.set(weekKey, new Set());
         weekDays.get(weekKey).add(dayKey);
       });
@@ -752,7 +826,7 @@
 
       // Hours-per-day and commit-span time series (sorted by date)
       const sortedDays = [...dayHours.keys()].sort();
-      const dayLabels = sortedDays.map(k => fmtShortDate(new Date(k)));
+      const dayLabels = sortedDays.map(k => fmtShortDate(new Date(k + 'T12:00:00')));
       hoursPerDayChart.data.labels = dayLabels;
       hoursPerDayChart.data.datasets[0].data = sortedDays.map(k => dayHours.get(k).size);
       hoursPerDayChart.update();
@@ -780,7 +854,7 @@
 
       // Days-per-week time series (sorted by week start)
       const sortedWeeks = [...weekDays.keys()].sort();
-      daysPerWeekChart.data.labels = sortedWeeks.map(k => fmtShortDate(new Date(k)));
+      daysPerWeekChart.data.labels = sortedWeeks.map(k => fmtShortDate(new Date(k + 'T12:00:00')));
       daysPerWeekChart.data.datasets[0].data = sortedWeeks.map(k => weekDays.get(k).size);
       daysPerWeekChart.update();
 
