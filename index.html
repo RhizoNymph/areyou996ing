@@ -210,7 +210,15 @@
           <canvas id="hours-per-day-chart"></canvas>
         </div>
         <div class="card" style="flex:1;">
+          <canvas id="commit-span-chart"></canvas>
+        </div>
+      </div>
+      <div style="display:flex;gap:1rem;">
+        <div class="card" style="flex:1;">
           <canvas id="days-per-week-chart"></canvas>
+        </div>
+        <div class="card" style="flex:1;">
+          <canvas id="dow-avg-chart"></canvas>
         </div>
       </div>
       <div class="card">
@@ -237,7 +245,9 @@
     let chart = null;
     let dowChart = null;
     let hoursPerDayChart = null;
+    let commitSpanChart = null;
     let daysPerWeekChart = null;
+    let dowAvgChart = null;
     let slider = null;
     let activeRepos = new Set();
 
@@ -444,7 +454,9 @@
       initChart();
       initDowChart();
       initHoursPerDayChart();
+      initCommitSpanChart();
       initDaysPerWeekChart();
+      initDowAvgChart();
       initSlider();
       updateChart();
     }
@@ -601,8 +613,56 @@
       hoursPerDayChart = makeTimeSeriesChart('hours-per-day-chart', '#58a6ff', 'Active Hours per Day', 'Date', 'Hours');
     }
 
+    function initCommitSpanChart() {
+      commitSpanChart = makeTimeSeriesChart('commit-span-chart', '#f0883e', 'Commit Span per Day (first→last)', 'Date', 'Hours');
+    }
+
     function initDaysPerWeekChart() {
       daysPerWeekChart = makeTimeSeriesChart('days-per-week-chart', '#bc8cff', 'Active Days per Week', 'Week', 'Days');
+    }
+
+    function initDowAvgChart() {
+      const ctx = document.getElementById('dow-avg-chart').getContext('2d');
+      dowAvgChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: DOW_LABELS,
+          datasets: [
+            {
+              label: 'Avg Active Hours',
+              data: new Array(7).fill(0),
+              backgroundColor: '#58a6ff',
+              borderRadius: 4,
+              borderSkipped: false,
+            },
+            {
+              label: 'Avg Span (hrs)',
+              data: new Array(7).fill(0),
+              backgroundColor: '#f0883e',
+              borderRadius: 4,
+              borderSkipped: false,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: true,
+          aspectRatio: 1.8,
+          plugins: {
+            legend: { display: true, labels: { color: '#c9d1d9', font: { size: 11 } } },
+            title: { display: true, text: 'Avg Daily Metrics by Day of Week', color: '#e6edf3', font: { size: 13, weight: '600' }, padding: { bottom: 12 } },
+            tooltip: {
+              backgroundColor: '#30363d', titleColor: '#e6edf3', bodyColor: '#c9d1d9',
+              borderColor: '#484f58', borderWidth: 1,
+              callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)} hrs` },
+            },
+          },
+          scales: {
+            x: { grid: { color: '#21262d' }, ticks: { color: '#8b949e', font: { size: 11 } } },
+            y: { beginAtZero: true, grid: { color: '#21262d' }, ticks: { color: '#8b949e' }, title: { display: true, text: 'Hours', color: '#8b949e', font: { size: 11 } } },
+          },
+        },
+      });
     }
 
     function fmtShortDate(d) {
@@ -659,12 +719,18 @@
 
       // Avg distinct hours per day (across days with commits)
       const dayHours = new Map(); // 'YYYY-MM-DD' -> Set of hours
+      const daySpans = new Map(); // 'YYYY-MM-DD' -> { min: Date, max: Date }
       // Avg distinct days per week (across weeks with commits)
       const weekDays = new Map(); // 'YYYY-Www' -> Set of day-of-week
       filtered.forEach(c => {
         const dayKey = c.date.toISOString().slice(0, 10);
         if (!dayHours.has(dayKey)) dayHours.set(dayKey, new Set());
         dayHours.get(dayKey).add(c.hour);
+
+        if (!daySpans.has(dayKey)) daySpans.set(dayKey, { min: c.date, max: c.date });
+        const span = daySpans.get(dayKey);
+        if (c.date < span.min) span.min = c.date;
+        if (c.date > span.max) span.max = c.date;
 
         const d = c.date;
         const dow = d.getDay();
@@ -684,11 +750,33 @@
       document.getElementById('stat-avg-hours').textContent = avgHours;
       document.getElementById('stat-avg-days').textContent = avgDays;
 
-      // Hours-per-day time series (sorted by date)
+      // Hours-per-day and commit-span time series (sorted by date)
       const sortedDays = [...dayHours.keys()].sort();
-      hoursPerDayChart.data.labels = sortedDays.map(k => fmtShortDate(new Date(k)));
+      const dayLabels = sortedDays.map(k => fmtShortDate(new Date(k)));
+      hoursPerDayChart.data.labels = dayLabels;
       hoursPerDayChart.data.datasets[0].data = sortedDays.map(k => dayHours.get(k).size);
       hoursPerDayChart.update();
+
+      commitSpanChart.data.labels = dayLabels;
+      commitSpanChart.data.datasets[0].data = sortedDays.map(k => {
+        const s = daySpans.get(k);
+        return s ? +((s.max - s.min) / 3600000).toFixed(2) : 0;
+      });
+      commitSpanChart.update();
+
+      // DOW average metrics (active hours + span)
+      const dowActiveArr = Array.from({ length: 7 }, () => []);
+      const dowSpanArr = Array.from({ length: 7 }, () => []);
+      sortedDays.forEach(k => {
+        const dow = new Date(k + 'T12:00:00').getDay();
+        dowActiveArr[dow].push(dayHours.get(k).size);
+        const s = daySpans.get(k);
+        if (s) dowSpanArr[dow].push((s.max - s.min) / 3600000);
+      });
+      const avgArr = arr => arr.length > 0 ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+      dowAvgChart.data.datasets[0].data = dowActiveArr.map(arr => +avgArr(arr).toFixed(2));
+      dowAvgChart.data.datasets[1].data = dowSpanArr.map(arr => +avgArr(arr).toFixed(2));
+      dowAvgChart.update();
 
       // Days-per-week time series (sorted by week start)
       const sortedWeeks = [...weekDays.keys()].sort();
