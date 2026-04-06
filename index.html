@@ -79,6 +79,13 @@
     }
     .btn:hover { background: #2ea043; }
     .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-reset {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      padding: 0.4rem 1rem; background: transparent; border: 1px solid #30363d;
+      border-radius: 6px; color: #8b949e; font-size: 0.8rem; font-weight: 500;
+      cursor: pointer; transition: all 0.15s;
+    }
+    .btn-reset:hover { border-color: #f85149; color: #f85149; }
 
     /* Progress */
     .progress-bar-outer {
@@ -177,6 +184,9 @@
 
     <!-- Main UI -->
     <div id="main-ui" class="hidden">
+      <div style="display:flex;justify-content:flex-end;margin-bottom:0.75rem;">
+        <button class="btn-reset" onclick="resetCache()">Reset &amp; refetch</button>
+      </div>
       <div class="stats">
         <div class="stat-card">
           <div class="value" id="stat-total">0</div>
@@ -204,26 +214,26 @@
         </div>
       </div>
       <div style="display:flex;gap:1rem;align-items:stretch;">
-        <div class="card" style="flex:3;">
+        <div class="card" style="flex:2;">
           <canvas id="chart"></canvas>
         </div>
-        <div class="card" style="flex:1;">
+        <div class="card" style="flex:2;">
           <canvas id="dow-chart"></canvas>
         </div>
       </div>
       <div style="display:flex;gap:1rem;">
-        <div class="card" style="flex:3;">
+        <div class="card" style="flex:2;">
           <canvas id="hours-per-day-chart"></canvas>
         </div>
-        <div class="card" style="flex:1;">
+        <div class="card" style="flex:2;">
           <canvas id="commit-span-chart"></canvas>
         </div>
       </div>
       <div style="display:flex;gap:1rem;">
-        <div class="card" style="flex:3;">
+        <div class="card" style="flex:2;">
           <canvas id="days-per-week-chart"></canvas>
         </div>
-        <div class="card" style="flex:1;">
+        <div class="card" style="flex:2;">
           <canvas id="dow-avg-chart"></canvas>
         </div>
       </div>
@@ -242,6 +252,31 @@
   </div>
 
   <script>
+    // ---- Cache ----
+    const CACHE_KEY = 'commit_times_cache';
+
+    function saveCache(commits) {
+      try {
+        localStorage.setItem(CACHE_KEY, JSON.stringify(commits));
+      } catch (_) { /* storage full or unavailable */ }
+    }
+
+    function loadCache() {
+      try {
+        const raw = localStorage.getItem(CACHE_KEY);
+        return raw ? JSON.parse(raw) : null;
+      } catch (_) { return null; }
+    }
+
+    function resetCache() {
+      localStorage.removeItem(CACHE_KEY);
+      document.getElementById('main-ui').classList.add('hidden');
+      document.getElementById('setup').classList.remove('hidden');
+      document.getElementById('fetch-btn').disabled = false;
+      showProgress(false);
+      showError('');
+    }
+
     // ---- Constants ----
     const HOUR_LABELS = Array.from({ length: 24 }, (_, i) => {
       const suffix = i < 12 ? 'am' : 'pm';
@@ -400,6 +435,7 @@
         }
 
         setProgress(100, `Done! ${commits.length} commits across ${new Set(commits.map(c => c.repo)).size} repos.`);
+        saveCache(commits);
         setTimeout(() => initApp(commits), 400);
       } catch (err) {
         showError(err.message);
@@ -438,7 +474,9 @@
       const reader = new FileReader();
       reader.onload = e => {
         try {
-          initApp(JSON.parse(e.target.result));
+          const commits = JSON.parse(e.target.result);
+          saveCache(commits);
+          initApp(commits);
         } catch (err) {
           alert('Invalid JSON: ' + err.message);
         }
@@ -860,6 +898,12 @@
 
       document.getElementById('stat-repos').textContent = new Set(filtered.map(c => c.repo)).size;
     }
+
+    // ---- Auto-load from cache on startup ----
+    (function () {
+      const cached = loadCache();
+      if (cached && cached.length > 0) initApp(cached);
+    })();
   </script>
 </body>
 </html>
