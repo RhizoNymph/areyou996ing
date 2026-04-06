@@ -21,7 +21,7 @@
     }
     h1 { font-size: 1.5rem; margin-bottom: 0.25rem; color: #e6edf3; }
     .subtitle { font-size: 0.85rem; color: #8b949e; margin-bottom: 1.5rem; }
-    .container { width: 100%; max-width: 900px; }
+    .container { width: 100%; max-width: 1400px; }
     .card {
       background: #161b22;
       border: 1px solid #30363d;
@@ -209,32 +209,34 @@
           <div class="label">Avg days/week</div>
         </div>
         <div class="stat-card">
+          <div class="value" id="stat-avg-span">-</div>
+          <div class="label">Avg span/day</div>
+        </div>
+        <div class="stat-card">
           <div class="value" id="stat-repos">0</div>
           <div class="label">Repos</div>
         </div>
       </div>
       <div style="display:flex;gap:1rem;align-items:stretch;">
-        <div class="card" style="flex:2;">
+        <div class="card" style="flex:1;">
           <canvas id="chart"></canvas>
         </div>
-        <div class="card" style="flex:2;">
+        <div class="card" style="flex:1;">
           <canvas id="dow-chart"></canvas>
         </div>
+        <div class="card" style="flex:1;">
+          <canvas id="dow-avg-chart"></canvas>
+        </div>
       </div>
       <div style="display:flex;gap:1rem;">
-        <div class="card" style="flex:2;">
+        <div class="card" style="flex:1;">
           <canvas id="hours-per-day-chart"></canvas>
         </div>
-        <div class="card" style="flex:2;">
+        <div class="card" style="flex:1;">
           <canvas id="commit-span-chart"></canvas>
         </div>
-      </div>
-      <div style="display:flex;gap:1rem;">
-        <div class="card" style="flex:2;">
+        <div class="card" style="flex:1;">
           <canvas id="days-per-week-chart"></canvas>
-        </div>
-        <div class="card" style="flex:2;">
-          <canvas id="dow-avg-chart"></canvas>
         </div>
       </div>
       <div class="card">
@@ -861,6 +863,10 @@
         : '-';
       document.getElementById('stat-avg-hours').textContent = avgHours;
       document.getElementById('stat-avg-days').textContent = avgDays;
+      const avgSpan = daySpans.size > 0
+        ? ([...daySpans.values()].reduce((s, v) => s + (v.max - v.min) / 3600000, 0) / daySpans.size).toFixed(1)
+        : '-';
+      document.getElementById('stat-avg-span').textContent = avgSpan === '-' ? '-' : avgSpan + 'h';
 
       // Hours-per-day and commit-span time series (sorted by date)
       const sortedDays = [...dayHours.keys()].sort();
